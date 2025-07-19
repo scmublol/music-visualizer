@@ -67,6 +67,7 @@ canvas.height = window.innerHeight;
 
 let audio, source, analyser, context;
 let dataArray, bufferLength;
+let timeArray;
 let hue = 0;
 let rgbEnabled = true;
 
@@ -92,10 +93,11 @@ function loadAudio(e) {
     analyser = context.createAnalyser();
     source.connect(analyser);
     analyser.connect(context.destination);
-    analyser.fftSize = 512;
+    analyser.fftSize = 1024; // More resolution for waveform
 
     bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
+    timeArray = new Uint8Array(analyser.fftSize); // For time-domain
 
     audio.play();
     draw();
@@ -104,18 +106,26 @@ function loadAudio(e) {
 function draw() {
     requestAnimationFrame(draw);
     if (!analyser) return;
-    analyser.getByteFrequencyData(dataArray);
 
     const mode = document.getElementById("mode").value;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    if (mode === "pulse") drawPulse();
-    else if (mode === "line") drawCenterWaveLine();
-    else if (mode === "waveform") drawWaveform();
+    if (mode === "pulse") {
+        analyser.getByteFrequencyData(dataArray);
+        drawPulse();
+    } 
+    else if (mode === "line") {
+        analyser.getByteTimeDomainData(timeArray);
+        drawCenterWaveLine();
+    } 
+    else if (mode === "waveform") {
+        analyser.getByteFrequencyData(dataArray);
+        drawWaveform();
+    }
 }
 
 function getBass() {
-    return dataArray.slice(0, 15).reduce((a, b) => a + b, 0) / 15;
+    return dataArray ? dataArray.slice(0, 15).reduce((a, b) => a + b, 0) / 15 : 0;
 }
 
 function getColor(alpha = 1) {
@@ -123,7 +133,7 @@ function getColor(alpha = 1) {
         hue = (hue + 2) % 360;
         return `hsla(${hue}, 100%, 50%, ${alpha})`;
     } else {
-        return `rgba(0,200,255,${alpha})`; // default cyan
+        return `rgba(0,200,255,${alpha})`; // default cyan-blue
     }
 }
 
@@ -140,19 +150,19 @@ function drawPulse() {
     ctx.fill();
 }
 
-// --- NEW CENTER WAVE LINE ---
+// --- SMOOTH CENTER WAVE LINE USING TIME-DOMAIN DATA ---
 function drawCenterWaveLine() {
     const centerY = canvas.height / 2;
-    const step = canvas.width / bufferLength;
+    const step = canvas.width / timeArray.length;
     const bass = getBass();
 
     ctx.beginPath();
     ctx.moveTo(0, centerY);
 
-    for (let i = 0; i < bufferLength; i++) {
-        const value = dataArray[i] / 255;
-        const randomJitter = (Math.random() - 0.5) * bass / 10; 
-        const y = centerY + (value * 150 - 75) + randomJitter; 
+    for (let i = 0; i < timeArray.length; i++) {
+        const value = (timeArray[i] - 128) / 128; // Normalize around center
+        const jitter = (Math.random() - 0.5) * bass / 30; // Add some movement
+        const y = centerY + value * 200 + jitter;
         ctx.lineTo(i * step, y);
     }
 
