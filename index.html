@@ -123,10 +123,11 @@ function getColor(alpha = 1) {
         hue = (hue + 2) % 360;
         return `hsla(${hue}, 100%, 50%, ${alpha})`;
     } else {
-        return `rgba(0,200,255,${alpha})`; // default cyan-blue
+        return `rgba(0,200,255,${alpha})`; // default cyan
     }
 }
 
+// --- PULSING CIRCLE ---
 function drawPulse() {
     const bass = getBass();
     const radius = 120 + bass / 1.5;
@@ -139,9 +140,9 @@ function drawPulse() {
     ctx.fill();
 }
 
+// --- NEW CENTER WAVE LINE ---
 function drawCenterWaveLine() {
     const centerY = canvas.height / 2;
-    const centerX = canvas.width / 2;
     const step = canvas.width / bufferLength;
     const bass = getBass();
 
@@ -149,18 +150,20 @@ function drawCenterWaveLine() {
     ctx.moveTo(0, centerY);
 
     for (let i = 0; i < bufferLength; i++) {
-        const value = dataArray[i] / 255; 
-        const y = centerY + (value * 200 - 100) * 0.5; // subtle wave
+        const value = dataArray[i] / 255;
+        const randomJitter = (Math.random() - 0.5) * bass / 10; 
+        const y = centerY + (value * 150 - 75) + randomJitter; 
         ctx.lineTo(i * step, y);
     }
 
-    ctx.strokeStyle = getColor(0.8);
-    ctx.shadowBlur = 30 + bass / 2;
+    ctx.strokeStyle = getColor(0.9);
+    ctx.shadowBlur = 40 + bass / 3;
     ctx.shadowColor = getColor(1);
     ctx.lineWidth = 3;
     ctx.stroke();
 }
 
+// --- CIRCULAR WAVEFORM ---
 function drawWaveform() {
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
