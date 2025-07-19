@@ -1,3 +1,4 @@
+made by 3am._ on discord
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,13 +33,16 @@
         user-select: none;
         pointer-events: none;
     }
-    button {
+    button, input[type="range"] {
         margin-left: 10px;
-        padding: 5px 10px;
+        padding: 5px;
         background: #333;
         color: white;
         border: none;
         cursor: pointer;
+    }
+    input[type="range"] {
+        width: 100px;
     }
     button:hover {
         background: #555;
@@ -54,6 +58,9 @@
         <option value="waveform">Circular Waveform</option>
     </select>
     <button id="rgbToggle">RGB: ON</button>
+    <label style="margin-left:10px;">Volume:
+        <input type="range" id="volume" min="0" max="1" step="0.01" value="1">
+    </label>
 </div>
 
 <div id="loveText">i love danny g</div>
@@ -65,14 +72,19 @@ const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
 
-let audio, source, analyser, context;
+let audio, source, analyser, context, gainNode;
 let dataArray, bufferLength;
 let timeArray;
 let hue = 0;
 let rgbEnabled = true;
+let currentVolume = 1;
 
 document.getElementById("fileInput").addEventListener("change", loadAudio);
 document.getElementById("rgbToggle").addEventListener("click", toggleRGB);
+document.getElementById("volume").addEventListener("input", e => {
+    currentVolume = parseFloat(e.target.value);
+    if (gainNode) gainNode.gain.value = currentVolume;
+});
 
 function toggleRGB() {
     rgbEnabled = !rgbEnabled;
@@ -91,13 +103,18 @@ function loadAudio(e) {
     context = new (window.AudioContext || window.webkitAudioContext)();
     source = context.createMediaElementSource(audio);
     analyser = context.createAnalyser();
+    gainNode = context.createGain();
+
     source.connect(analyser);
-    analyser.connect(context.destination);
-    analyser.fftSize = 1024; // More resolution for waveform
+    analyser.connect(gainNode);
+    gainNode.connect(context.destination);
+    analyser.fftSize = 1024;
 
     bufferLength = analyser.frequencyBinCount;
     dataArray = new Uint8Array(bufferLength);
-    timeArray = new Uint8Array(analyser.fftSize); // For time-domain
+    timeArray = new Uint8Array(analyser.fftSize);
+
+    gainNode.gain.value = currentVolume;
 
     audio.play();
     draw();
@@ -124,67 +141,72 @@ function draw() {
     }
 }
 
-function getBass() {
-    return dataArray ? dataArray.slice(0, 15).reduce((a, b) => a + b, 0) / 15 : 0;
-}
-
 function getColor(alpha = 1) {
     if (rgbEnabled) {
         hue = (hue + 2) % 360;
         return `hsla(${hue}, 100%, 50%, ${alpha})`;
     } else {
-        return `rgba(0,200,255,${alpha})`; // default cyan-blue
+        return `rgba(0,200,255,${alpha})`;
     }
 }
 
-// --- PULSING CIRCLE ---
+function getWaveformEnergy() {
+    let sum = 0;
+    for (let i = 0; i < timeArray.length; i++) {
+        const v = (timeArray[i] - 128) / 128;
+        sum += Math.abs(v);
+    }
+    return sum / timeArray.length;
+}
+
+// --- PULSING CIRCLE (scaled by volume) --- made by 3am._ on discord
 function drawPulse() {
-    const bass = getBass();
-    const radius = 120 + bass / 1.5;
+    const bass = dataArray.slice(0, 15).reduce((a, b) => a + b, 0) / 15;
+    const radius = (120 + bass / 1.5) * currentVolume;
 
     ctx.beginPath();
     ctx.arc(canvas.width / 2, canvas.height / 2, radius, 0, Math.PI * 2);
     ctx.fillStyle = getColor(0.5);
-    ctx.shadowBlur = 60;
+    ctx.shadowBlur = 60 * currentVolume;
     ctx.shadowColor = getColor(1);
     ctx.fill();
 }
 
-// --- SMOOTH CENTER WAVE LINE USING TIME-DOMAIN DATA ---
+// --- CENTER WAVE LINE (scaled by volume) --- made by 3am._ on discord
 function drawCenterWaveLine() {
     const centerY = canvas.height / 2;
     const step = canvas.width / timeArray.length;
-    const bass = getBass();
+    const energy = getWaveformEnergy();
 
     ctx.beginPath();
     ctx.moveTo(0, centerY);
 
     for (let i = 0; i < timeArray.length; i++) {
-        const value = (timeArray[i] - 128) / 128; // Normalize around center
-        const jitter = (Math.random() - 0.5) * bass / 30; // Add some movement
-        const y = centerY + value * 200 + jitter;
+        const normalized = (timeArray[i] - 128) / 128;
+        const jitter = (Math.random() - 0.5) * energy * 50 * currentVolume;
+        const y = centerY + normalized * 200 * currentVolume + jitter;
         ctx.lineTo(i * step, y);
     }
 
     ctx.strokeStyle = getColor(0.9);
-    ctx.shadowBlur = 40 + bass / 3;
+    ctx.shadowBlur = (50 + energy * 200) * currentVolume;
     ctx.shadowColor = getColor(1);
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 3 * currentVolume;
     ctx.stroke();
 }
 
-// --- CIRCULAR WAVEFORM ---
+// --- CIRCULAR WAVEFORM (scaled by volume) --- made by 3am._ on discord
 function drawWaveform() {
     const centerX = canvas.width / 2;
     const centerY = canvas.height / 2;
-    const radius = 180;
+    const radius = 180 * currentVolume;
     const bars = 120;
 
     for (let i = 0; i < bars; i++) {
         const angle = (i / bars) * Math.PI * 2;
         const freqIndex = Math.floor(i * (bufferLength / bars));
         const value = dataArray[freqIndex] || 0;
-        const barHeight = value / 2;
+        const barHeight = (value / 2) * currentVolume;
 
         const x1 = centerX + Math.cos(angle) * radius;
         const y1 = centerY + Math.sin(angle) * radius;
@@ -192,7 +214,7 @@ function drawWaveform() {
         const y2 = centerY + Math.sin(angle) * (radius + barHeight);
 
         ctx.strokeStyle = getColor(1);
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2 * currentVolume;
         ctx.beginPath();
         ctx.moveTo(x1, y1);
         ctx.lineTo(x2, y2);
